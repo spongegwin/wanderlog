@@ -11,11 +11,7 @@ interface PackingBulkEditorProps {
   items: PackingItem[];
   participants: Participant[];
   onCancel: () => void;
-  onSave: (result: {
-    toInsert: ReturnType<typeof diff>["toInsert"];
-    toSoftDelete: PackingItem[];
-    toUpdate: ReturnType<typeof diff>["toUpdate"];
-  }) => Promise<void>;
+  onSave: (result: ReturnType<typeof diff>) => Promise<void>;
 }
 
 export default function PackingBulkEditor({
@@ -74,7 +70,10 @@ export default function PackingBulkEditor({
   const parsed = fromText(text);
   const result = diff(items, parsed, participants);
   const totalChanges =
-    result.toInsert.length + result.toSoftDelete.length + result.toUpdate.length;
+    result.toInsert.length +
+    result.toSoftDelete.length +
+    result.toUpdate.length +
+    result.toReorder.length;
 
   async function save() {
     setSaving(true);
@@ -179,6 +178,11 @@ export default function PackingBulkEditor({
                 ↻ reassign {result.toUpdate.length}:{" "}
                 {result.toUpdate.map((u) => u.oldLabel).slice(0, 3).join(", ")}
                 {result.toUpdate.length > 3 && ` and ${result.toUpdate.length - 3} more`}
+              </p>
+            )}
+            {result.toReorder.length > 0 && (
+              <p className="text-[var(--ink-3)]">
+                ↕ reorder {result.toReorder.length} item{result.toReorder.length === 1 ? "" : "s"}
               </p>
             )}
           </div>

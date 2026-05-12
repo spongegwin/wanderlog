@@ -57,6 +57,7 @@ export default function PackingList({
       .select("*")
       .eq("trip_id", tripId)
       .is("deleted_at", null)
+      .order("sort_order")
       .order("created_at");
     setItems((data ?? []) as PackingItem[]);
     setLoading(false);
@@ -230,9 +231,10 @@ export default function PackingList({
   }
 
   async function handleBulkSave(result: {
-    toInsert: Array<{ scope: PackingScope; category: string; label: string; assigneeName?: string | null }>;
+    toInsert: Array<{ scope: PackingScope; category: string; label: string; assigneeName?: string | null; sort_order: number }>;
     toSoftDelete: PackingItem[];
     toUpdate: Array<{ id: string; assigned_to: string | null; oldLabel: string; newAssigneeName: string | null }>;
+    toReorder: Array<{ id: string; sort_order: number }>;
   }) {
     // Inserts
     if (result.toInsert.length > 0) {
@@ -248,6 +250,7 @@ export default function PackingList({
           category: CATEGORIES.includes(t.category) ? t.category : "Other",
           scope: t.scope,
           assigned_to: assigneeId,
+          sort_order: t.sort_order,
           created_by: currentUserId,
         };
       });
@@ -285,12 +288,20 @@ export default function PackingList({
       );
     }
 
+    // Reorder (sort_order changes)
+    for (const r of result.toReorder) {
+      await supabase.from("packing_items").update({ sort_order: r.sort_order }).eq("id", r.id);
+    }
+
     const total =
-      result.toInsert.length + result.toSoftDelete.length + result.toUpdate.length;
+      result.toInsert.length +
+      result.toSoftDelete.length +
+      result.toUpdate.length +
+      result.toReorder.length;
     if (total > 0) {
       await log(
         "packing.bulk_imported",
-        `edited list (${result.toInsert.length} added, ${result.toSoftDelete.length} removed, ${result.toUpdate.length} reassigned)`
+        `edited list (${result.toInsert.length} added, ${result.toSoftDelete.length} removed, ${result.toUpdate.length} reassigned, ${result.toReorder.length} reordered)`
       );
     }
 

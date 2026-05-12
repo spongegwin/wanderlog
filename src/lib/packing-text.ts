@@ -11,9 +11,10 @@ export interface ParsedItem {
 }
 
 export interface DiffResult {
-  toInsert: ParsedItem[];
+  toInsert: Array<ParsedItem & { sort_order: number }>;
   toSoftDelete: PackingItem[];
   toUpdate: Array<{ id: string; assigned_to: string | null; oldLabel: string; newAssigneeName: string | null }>;
+  toReorder: Array<{ id: string; sort_order: number }>;
 }
 
 /**
@@ -25,9 +26,10 @@ export function toText(items: PackingItem[], participants: Participant[]): strin
 
   for (const scope of VALID_SCOPES) {
     for (const cat of VALID_CATEGORIES) {
-      const items_in = items.filter(
-        (i) => (i.scope ?? "shared") === scope && (i.category || "Other") === cat
-      );
+      const items_in = items
+        .filter((i) => (i.scope ?? "shared") === scope && (i.category || "Other") === cat)
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       if (items_in.length === 0) continue;
 
       if (lines.length > 0) lines.push("");
@@ -132,18 +134,19 @@ export function diff(
   }
 
   const targetKeys = new Set<string>();
-  const toInsert: ParsedItem[] = [];
+  const toInsert: DiffResult["toInsert"] = [];
   const toUpdate: DiffResult["toUpdate"] = [];
+  const toReorder: DiffResult["toReorder"] = [];
 
-  for (const t of target) {
+  target.forEach((t, idx) => {
     const k = key(t.scope, t.category, t.label);
-    if (targetKeys.has(k)) continue; // duplicate within target — skip
+    if (targetKeys.has(k)) return; // duplicate within target — skip
     targetKeys.add(k);
 
     const existing = currentMap.get(k);
     if (!existing) {
-      toInsert.push(t);
-      continue;
+      toInsert.push({ ...t, sort_order: idx });
+      return;
     }
 
     // Match assignee by name (case-insensitive) — only for shared items
@@ -162,12 +165,16 @@ export function diff(
         newAssigneeName: t.assigneeName ?? null,
       });
     }
-  }
+
+    if ((existing.sort_order ?? 0) !== idx) {
+      toReorder.push({ id: existing.id, sort_order: idx });
+    }
+  });
 
   const toSoftDelete = current.filter((item) => {
     const k = key(item.scope ?? "shared", item.category || "Other", item.label);
     return !targetKeys.has(k);
   });
 
-  return { toInsert, toSoftDelete, toUpdate };
+  return { toInsert, toSoftDelete, toUpdate, toReorder };
 }
