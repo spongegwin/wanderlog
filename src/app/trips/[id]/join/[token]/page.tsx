@@ -1,116 +1,82 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import type { Trip } from "@/lib/types";
-import { assignColor } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
+import type {
+  Trip,
+  Participant,
+  ItineraryBlock,
+  BlockBooking,
+  PackingItem,
+  Resource,
+} from "@/lib/types";
+import TripPreviewHeader from "@/components/trip/preview/TripPreviewHeader";
+import ParticipantsPreview from "@/components/trip/preview/ParticipantsPreview";
+import ItineraryPreview from "@/components/trip/preview/ItineraryPreview";
+import PackingPreview from "@/components/trip/preview/PackingPreview";
+import ResourcesPreview from "@/components/trip/preview/ResourcesPreview";
+import JoinChoicePanel from "@/components/trip/JoinChoicePanel";
 
 export const dynamic = "force-dynamic";
 
-export default function JoinPage() {
-  const { id, token } = useParams<{ id: string; token: string }>();
-  const router = useRouter();
+interface PreviewBundle {
+  trip: Trip;
+  participants: Participant[];
+  itinerary_blocks: ItineraryBlock[];
+  block_bookings: BlockBooking[];
+  packing_items: PackingItem[];
+  resources: Resource[];
+}
 
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [joining, setJoining] = useState(false);
-  const [error, setError] = useState("");
+export default async function JoinPage({
+  params,
+}: {
+  params: Promise<{ id: string; token: string }>;
+}) {
+  const { id, token } = await params;
+  const supabase = await createClient();
 
-  useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("trips")
-      .select("*")
-      .eq("id", id)
-      .eq("invite_token", token)
-      .single()
-      .then(({ data }) => {
-        setTrip(data);
-        setLoading(false);
-      });
-  }, [id, token]);
+  const { data: preview, error } = await supabase.rpc("get_trip_preview_by_token", {
+    p_trip_id: id,
+    p_token: token,
+  });
 
-  async function join() {
-    setJoining(true);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/api/auth/callback?trip_id=${id}`,
-        },
-      });
-      return;
-    }
-
-    const { data: existing } = await supabase
-      .from("participants")
-      .select("id")
-      .eq("trip_id", id)
-      .eq("user_id", user.id)
-      .single();
-
-    if (!existing) {
-      const { data: participantCount } = await supabase
-        .from("participants")
-        .select("id", { count: "exact" })
-        .eq("trip_id", id);
-
-      await supabase.from("participants").insert({
-        trip_id: id,
-        user_id: user.id,
-        name: user.user_metadata?.full_name ?? user.email,
-        role: "confirmed",
-        color: assignColor((participantCount?.length ?? 0)),
-      } as Record<string, unknown>);
-    }
-
-    router.push(`/trips/${id}`);
-  }
-
-  if (loading) {
+  if (error || !preview) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-[var(--ink-3)]">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center">
+          <p className="text-[var(--ink-3)]">Invite link not found.</p>
+        </div>
       </div>
     );
   }
 
-  if (!trip) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-[var(--ink-3)]">Invite link not found.</p>
-      </div>
-    );
-  }
+  const bundle = preview as PreviewBundle;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="bg-white border border-[var(--paper-3)] rounded-2xl p-8 max-w-sm w-full text-center shadow-sm">
-        <p className="text-sm text-[var(--ink-3)] mb-1">You're invited to</p>
-        <h1 className="font-serif text-2xl font-bold text-[var(--ink)] mb-1">{trip.name}</h1>
-        {trip.destination && (
-          <p className="text-[var(--ink-3)] text-sm mb-1">{trip.destination}</p>
-        )}
-        {trip.essence && (
-          <p className="text-sm italic text-[var(--ink-2)] mt-2 mb-6">"{trip.essence}"</p>
-        )}
-
-        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-
-        <button
-          onClick={join}
-          disabled={joining}
-          className="w-full bg-[var(--accent)] text-white py-3 rounded-xl font-medium hover:opacity-90 transition disabled:opacity-50"
-        >
-          {joining ? "Joining…" : "Join with Google"}
-        </button>
+    <div className="min-h-screen bg-[var(--paper)]">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+        <TripPreviewHeader
+          trip={bundle.trip}
+          blocks={bundle.itinerary_blocks}
+          participantCount={bundle.participants.length}
+        />
+        <ParticipantsPreview participants={bundle.participants} />
+        <ItineraryPreview blocks={bundle.itinerary_blocks} />
+        <PackingPreview items={bundle.packing_items} />
+        <ResourcesPreview resources={bundle.resources} />
       </div>
+
+      <JoinChoicePanel
+        tripId={bundle.trip.id}
+        tripName={bundle.trip.name}
+        token={token}
+        participants={bundle.participants}
+        initialUserId={user?.id ?? null}
+        initialEmail={user?.email ?? null}
+        initialFullName={(user?.user_metadata?.full_name as string | undefined) ?? null}
+      />
     </div>
   );
 }
