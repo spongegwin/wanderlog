@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import TripGrid from "@/components/trip/TripGrid";
 import PendingInvites from "@/components/dashboard/PendingInvites";
+import ExampleTripView from "@/components/marketing/ExampleTripView";
 import type { Trip, Participant } from "@/lib/types";
 import { Plus } from "lucide-react";
 
@@ -13,7 +13,13 @@ export default async function HomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) {
+    return (
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+        <ExampleTripView showOAuthBanner={true} />
+      </main>
+    );
+  }
 
   const { data: participantRows } = await supabase
     .from("participants")

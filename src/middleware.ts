@@ -34,7 +34,8 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     pathname === "/" ||
     pathname === "/login" ||
-    pathname.startsWith("/trips/") && pathname.includes("/join/") ||
+    pathname === "/example" ||
+    (pathname.startsWith("/trips/") && pathname.includes("/join/")) ||
     pathname.startsWith("/api/auth");
 
   if (!user && !isPublic) {
