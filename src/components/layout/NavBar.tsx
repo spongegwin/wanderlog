@@ -24,7 +24,7 @@ export default async function NavBar() {
           href="/"
           className="font-serif font-bold text-[var(--ink)] hover:text-[var(--accent)] transition text-base"
         >
-          Wanderlog
+          Wingit
         </Link>
         <UserMenu
           email={user.email ?? ""}

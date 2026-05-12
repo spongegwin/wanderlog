@@ -14,7 +14,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Wanderlog",
+  title: "Wingit",
   description: "Collaborative trip memory and planning",
 };
 

@@ -16,7 +16,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="bg-white rounded-2xl shadow-sm border border-[var(--paper-3)] p-10 max-w-sm w-full text-center">
-        <h1 className="font-serif text-3xl font-bold text-[var(--ink)] mb-2">Wanderlog</h1>
+        <h1 className="font-serif text-3xl font-bold text-[var(--ink)] mb-2">Wingit</h1>
         <p className="text-[var(--ink-3)] mb-8 text-sm">
           Plan trips together. Remember everything.
         </p>

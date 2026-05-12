@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 5000,
-    system: `You are a trip-planning assistant for Wanderlog. The user is in the middle of planning. They will ask a planning question. You have access to the trip's full state (participants, dates, all blocks, packing list summary).
+    system: `You are a trip-planning assistant for Wingit. The user is in the middle of planning. They will ask a planning question. You have access to the trip's full state (participants, dates, all blocks, packing list summary).
 
 Your job:
 1. Give a clear, concrete answer (2-5 sentences). Use your knowledge of travel logistics (typical ferry schedules, drive times, traffic, etc.) — be specific with times and numbers when sensible. NEVER hallucinate booking references, prices, or confirmation numbers.
