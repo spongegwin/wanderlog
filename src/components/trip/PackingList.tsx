@@ -10,7 +10,7 @@ import PackingHistoryDrawer from "./PackingHistoryDrawer";
 import PackingItemHistory from "./PackingItemHistory";
 import PackingBulkEditor from "./PackingBulkEditor";
 import {
-  Sparkles, Plus, Trash2, Check, History, Upload, Info, Pencil,
+  Sparkles, Plus, Trash2, Check, History, Upload, Info, Pencil, GripVertical,
 } from "lucide-react";
 
 const CATEGORIES = ["Gear", "Clothing", "Food", "Documents", "Other"];
@@ -49,7 +49,52 @@ export default function PackingList({
   const [showImporter, setShowImporter] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showBulkEditor, setShowBulkEditor] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const supabase = createClient();
+
+  // Reorder within a single (scope, category) group. Reuses the sort_order
+  // slots already held by this group so other groups aren't disturbed.
+  async function reorderWithinGroup(
+    scope: PackingScope,
+    category: string,
+    fromId: string,
+    toId: string
+  ) {
+    if (fromId === toId) return;
+    const group = items
+      .filter(
+        (i) =>
+          i.scope === scope &&
+          (CATEGORIES.includes(i.category) ? i.category : "Other") === category
+      )
+      .sort(
+        (a, b) =>
+          a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)
+      );
+    const fromIdx = group.findIndex((i) => i.id === fromId);
+    const toIdx = group.findIndex((i) => i.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...group];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    const slots = group.map((i) => i.sort_order);
+    const idToNewOrder = new Map(reordered.map((it, idx) => [it.id, slots[idx]]));
+
+    setItems((prev) =>
+      prev.map((i) =>
+        idToNewOrder.has(i.id) ? { ...i, sort_order: idToNewOrder.get(i.id)! } : i
+      )
+    );
+
+    await Promise.all(
+      Array.from(idToNewOrder.entries()).map(([id, sort_order]) =>
+        supabase.from("packing_items").update({ sort_order }).eq("id", id)
+      )
+    );
+  }
 
   async function fetchItems() {
     const { data } = await supabase
@@ -421,13 +466,49 @@ export default function PackingList({
                           ? participants.find((p) => p.id === item.assigned_to)
                           : null;
                         const isEditing = editingLabelId === item.id;
+                        const isDragging = draggingId === item.id;
+                        const isDragOver = dragOverId === item.id && draggingId && draggingId !== item.id;
                         return (
                           <li
                             key={item.id}
-                            className={`flex items-center gap-2 bg-white border border-[var(--paper-3)] rounded-lg px-3 py-2 group relative ${
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              setDraggingId(item.id);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (draggingId && draggingId !== item.id) setDragOverId(item.id);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverId === item.id) setDragOverId(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              if (draggingId && draggingId !== item.id) {
+                                reorderWithinGroup(scope, cat, draggingId, item.id);
+                              }
+                              setDraggingId(null);
+                              setDragOverId(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingId(null);
+                              setDragOverId(null);
+                            }}
+                            className={`flex items-center gap-2 bg-white border border-[var(--paper-3)] rounded-lg px-3 py-2 group relative transition ${
                               item.packed ? "opacity-60" : ""
+                            } ${isDragging ? "opacity-30" : ""} ${
+                              isDragOver ? "border-t-2 border-t-[var(--accent)]" : ""
                             }`}
                           >
+                            <span
+                              className="cursor-grab active:cursor-grabbing text-[var(--ink-3)] opacity-0 group-hover:opacity-100 transition flex-shrink-0"
+                              title="Drag to reorder"
+                            >
+                              <GripVertical size={12} />
+                            </span>
+
                             <button
                               onClick={() => togglePacked(item)}
                               className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${

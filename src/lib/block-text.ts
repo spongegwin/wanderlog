@@ -11,6 +11,7 @@ export interface ParsedBlockLine {
   type: BlockType;
   title: string;
   day_label: string | null;
+  sort_order: number;
 }
 
 export interface BlockDiff {
@@ -21,6 +22,7 @@ export interface BlockDiff {
     title: string;
     fields: { status?: BlockStatus; type?: BlockType };
   }>;
+  toReorder: Array<{ id: string; title: string; sort_order: number }>;
 }
 
 function dateHeader(iso: string): string {
@@ -111,6 +113,13 @@ function parseDateHeader(line: string): string | null {
 export function fromText(raw: string): ParsedBlockLine[] {
   const items: ParsedBlockLine[] = [];
   let currentDate: string | null = null;
+  // Per-day position counter; resets on every header change.
+  const positionByDate = new Map<string | null, number>();
+  const nextPos = (date: string | null) => {
+    const n = positionByDate.get(date) ?? 0;
+    positionByDate.set(date, n + 1);
+    return n;
+  };
 
   const lines = raw.split("\n");
 
@@ -133,6 +142,7 @@ export function fromText(raw: string): ParsedBlockLine[] {
           type,
           title,
           day_label: currentDate ? shortDayLabel(currentDate) : null,
+          sort_order: nextPos(currentDate),
         });
       }
       continue;
@@ -152,6 +162,7 @@ export function fromText(raw: string): ParsedBlockLine[] {
           type: "idea",
           title,
           day_label: currentDate ? shortDayLabel(currentDate) : null,
+          sort_order: nextPos(currentDate),
         });
       }
       continue;
@@ -168,6 +179,7 @@ export function fromText(raw: string): ParsedBlockLine[] {
           type: "idea",
           title,
           day_label: currentDate ? shortDayLabel(currentDate) : null,
+          sort_order: nextPos(currentDate),
         });
       }
       continue;
@@ -213,6 +225,7 @@ export function diff(current: ItineraryBlock[], target: ParsedBlockLine[]): Bloc
   const targetKeys = new Set<string>();
   const toInsert: ParsedBlockLine[] = [];
   const toUpdate: BlockDiff["toUpdate"] = [];
+  const toReorder: BlockDiff["toReorder"] = [];
 
   for (const t of target) {
     const k = key(t.date, t.title);
@@ -230,11 +243,14 @@ export function diff(current: ItineraryBlock[], target: ParsedBlockLine[]): Bloc
     if (Object.keys(fields).length > 0) {
       toUpdate.push({ id: existing.id, title: existing.title, fields });
     }
+    if (existing.sort_order !== t.sort_order) {
+      toReorder.push({ id: existing.id, title: existing.title, sort_order: t.sort_order });
+    }
   }
 
   const toDelete = current.filter((b) => !targetKeys.has(key(b.date, b.title)));
 
-  return { toInsert, toDelete, toUpdate };
+  return { toInsert, toDelete, toUpdate, toReorder };
 }
 
 /**

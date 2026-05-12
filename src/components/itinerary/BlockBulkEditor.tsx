@@ -38,7 +38,10 @@ export default function BlockBulkEditor({
   const parsed = fromTextSingleDay(text, dayDate);
   const result = diff(blocks, parsed);
   const totalChanges =
-    result.toInsert.length + result.toDelete.length + result.toUpdate.length;
+    result.toInsert.length +
+    result.toDelete.length +
+    result.toUpdate.length +
+    result.toReorder.length;
 
   async function aiCleanUp() {
     setCleaning(true);
@@ -183,6 +186,13 @@ export default function BlockBulkEditor({
                 ↻ change {result.toUpdate.length}:{" "}
                 {result.toUpdate.map((u) => u.title).slice(0, 3).join(", ")}
                 {result.toUpdate.length > 3 && ` and ${result.toUpdate.length - 3} more`}
+              </p>
+            )}
+            {result.toReorder.length > 0 && (
+              <p className="text-[var(--ink-2)]">
+                ↕ reorder {result.toReorder.length}:{" "}
+                {result.toReorder.map((r) => r.title).slice(0, 3).join(", ")}
+                {result.toReorder.length > 3 && ` and ${result.toReorder.length - 3} more`}
               </p>
             )}
           </div>

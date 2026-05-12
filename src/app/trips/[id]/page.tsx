@@ -54,6 +54,8 @@ export default function TripDetailPage() {
     label: string;
     blocks: ItineraryBlock[];
   } | null>(null);
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null);
 
   async function load() {
     const supabase = createClient();
@@ -105,6 +107,7 @@ export default function TripDetailPage() {
         date: t.date,
         day_label: t.day_label,
         title: t.title,
+        sort_order: t.sort_order,
       }));
       const { data: inserted } = await supabase
         .from("itinerary_blocks")
@@ -158,8 +161,19 @@ export default function TripDetailPage() {
       });
     }
 
+    // Reorders (sort_order only)
+    for (const r of result.toReorder) {
+      await supabase
+        .from("itinerary_blocks")
+        .update({ sort_order: r.sort_order })
+        .eq("id", r.id);
+    }
+
     const total =
-      result.toInsert.length + result.toDelete.length + result.toUpdate.length;
+      result.toInsert.length +
+      result.toDelete.length +
+      result.toUpdate.length +
+      result.toReorder.length;
     if (total > 0) {
       await logActivity(supabase, {
         tripId: id,
@@ -172,6 +186,45 @@ export default function TripDetailPage() {
 
     setBulkEditTarget(null);
     await load();
+  }
+
+  // Reorder blocks within a single day group. Reuses the day's existing
+  // sort_order slots so other days aren't disturbed.
+  async function reorderBlocksWithinDay(
+    dayKey: string | null,
+    fromId: string,
+    toId: string
+  ) {
+    if (fromId === toId || !userId) return;
+    const supabase = createClient();
+    const group = blocks
+      .filter((b) => (b.date ?? null) === dayKey)
+      .sort(
+        (a, b) =>
+          a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)
+      );
+    const fromIdx = group.findIndex((b) => b.id === fromId);
+    const toIdx = group.findIndex((b) => b.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...group];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    const slots = group.map((b) => b.sort_order);
+    const idToNewOrder = new Map(reordered.map((b, idx) => [b.id, slots[idx]]));
+
+    setBlocks((prev) =>
+      prev.map((b) =>
+        idToNewOrder.has(b.id) ? { ...b, sort_order: idToNewOrder.get(b.id)! } : b
+      )
+    );
+
+    await Promise.all(
+      Array.from(idToNewOrder.entries()).map(([id, sort_order]) =>
+        supabase.from("itinerary_blocks").update({ sort_order }).eq("id", id)
+      )
+    );
   }
 
   useEffect(() => {
@@ -378,16 +431,26 @@ export default function TripDetailPage() {
 
               <div className="space-y-2">
                 {group.blocks.map((b) => (
-                  <ItineraryBlockComponent
+                  <DraggableBlockWrapper
                     key={b.id}
-                    block={b}
-                    participants={participants}
-                    currentUserId={userId}
-                    currentUserName={userName}
-                    currentUserColor={userColor}
-                    allDayLabels={allDayLabels}
-                    onUpdated={load}
-                  />
+                    blockId={b.id}
+                    dayKey={group.date}
+                    draggingBlockId={draggingBlockId}
+                    dragOverBlockId={dragOverBlockId}
+                    setDraggingBlockId={setDraggingBlockId}
+                    setDragOverBlockId={setDragOverBlockId}
+                    onReorder={reorderBlocksWithinDay}
+                  >
+                    <ItineraryBlockComponent
+                      block={b}
+                      participants={participants}
+                      currentUserId={userId}
+                      currentUserName={userName}
+                      currentUserColor={userColor}
+                      allDayLabels={allDayLabels}
+                      onUpdated={load}
+                    />
+                  </DraggableBlockWrapper>
                 ))}
               </div>
             </section>
@@ -415,16 +478,26 @@ export default function TripDetailPage() {
               </div>
               <div className="space-y-2">
                 {noDayBlocks.map((b) => (
-                  <ItineraryBlockComponent
+                  <DraggableBlockWrapper
                     key={b.id}
-                    block={b}
-                    participants={participants}
-                    currentUserId={userId}
-                    currentUserName={userName}
-                    currentUserColor={userColor}
-                    allDayLabels={allDayLabels}
-                    onUpdated={load}
-                  />
+                    blockId={b.id}
+                    dayKey={null}
+                    draggingBlockId={draggingBlockId}
+                    dragOverBlockId={dragOverBlockId}
+                    setDraggingBlockId={setDraggingBlockId}
+                    setDragOverBlockId={setDragOverBlockId}
+                    onReorder={reorderBlocksWithinDay}
+                  >
+                    <ItineraryBlockComponent
+                      block={b}
+                      participants={participants}
+                      currentUserId={userId}
+                      currentUserName={userName}
+                      currentUserColor={userColor}
+                      allDayLabels={allDayLabels}
+                      onUpdated={load}
+                    />
+                  </DraggableBlockWrapper>
                 ))}
               </div>
             </section>
@@ -530,6 +603,67 @@ function EmptyTripCard({ onAdd }: { onAdd: () => void }) {
           <div className="text-xs text-[var(--ink-3)] mt-0.5">Anywhere, any time</div>
         </button>
       </div>
+    </div>
+  );
+}
+
+interface DraggableBlockWrapperProps {
+  blockId: string;
+  dayKey: string | null;
+  draggingBlockId: string | null;
+  dragOverBlockId: string | null;
+  setDraggingBlockId: (id: string | null) => void;
+  setDragOverBlockId: (id: string | null) => void;
+  onReorder: (dayKey: string | null, fromId: string, toId: string) => void;
+  children: React.ReactNode;
+}
+
+function DraggableBlockWrapper({
+  blockId,
+  dayKey,
+  draggingBlockId,
+  dragOverBlockId,
+  setDraggingBlockId,
+  setDragOverBlockId,
+  onReorder,
+  children,
+}: DraggableBlockWrapperProps) {
+  const isDragging = draggingBlockId === blockId;
+  const isDragOver =
+    dragOverBlockId === blockId && draggingBlockId && draggingBlockId !== blockId;
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        setDraggingBlockId(blockId);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (draggingBlockId && draggingBlockId !== blockId) setDragOverBlockId(blockId);
+      }}
+      onDragLeave={() => {
+        if (dragOverBlockId === blockId) setDragOverBlockId(null);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (draggingBlockId && draggingBlockId !== blockId) {
+          onReorder(dayKey, draggingBlockId, blockId);
+        }
+        setDraggingBlockId(null);
+        setDragOverBlockId(null);
+      }}
+      onDragEnd={() => {
+        setDraggingBlockId(null);
+        setDragOverBlockId(null);
+      }}
+      className={`transition ${isDragging ? "opacity-30" : ""} ${
+        isDragOver ? "ring-2 ring-[var(--accent)] ring-offset-2 rounded-xl" : ""
+      }`}
+    >
+      {children}
     </div>
   );
 }
