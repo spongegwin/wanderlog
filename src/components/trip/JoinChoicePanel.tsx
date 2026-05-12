@@ -48,6 +48,32 @@ export default function JoinChoicePanel({
     [initialEmail, initialFullName, unclaimed]
   );
 
+  // Auto-accept if signed-in user's email matches a pending invite on this trip.
+  // Happens before the chooser opens so the user lands in the trip directly.
+  useEffect(() => {
+    if (!userId || !initialEmail) return;
+    const email = initialEmail.toLowerCase();
+    const match = participants.find(
+      (p) =>
+        p.user_id === null &&
+        !!p.invited_email &&
+        p.invited_email.toLowerCase() === email
+    );
+    if (!match) return;
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc("accept_pending_invite", {
+        p_participant_id: match.id,
+      });
+      if (cancelled || rpcError) return;
+      router.push(`/trips/${tripId}`);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, initialEmail, participants, tripId, router]);
+
   // Auto-open on first visit unless dismissed.
   useEffect(() => {
     if (typeof window === "undefined") return;

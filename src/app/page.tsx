@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import TripGrid from "@/components/trip/TripGrid";
+import PendingInvites from "@/components/dashboard/PendingInvites";
 import type { Trip, Participant } from "@/lib/types";
 import { Plus } from "lucide-react";
 
@@ -66,6 +67,8 @@ export default async function HomePage() {
           New trip
         </Link>
       </div>
+
+      <PendingInvites />
 
       <TripGrid trips={trips} participantsByTrip={participantsByTrip} />
     </main>

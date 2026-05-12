@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Trip, Participant } from "@/lib/types";
@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { logActivity } from "@/lib/activity";
 import { assignColor } from "@/lib/utils";
 import Avatar from "@/components/ui/Avatar";
-import { X, Trash2, LogOut, Check, Link2, AlertTriangle, UserPlus } from "lucide-react";
+import UserSearchCombobox, { type InviteAction } from "@/components/trip/UserSearchCombobox";
+import { X, Trash2, LogOut, Check, Link2, AlertTriangle } from "lucide-react";
 
 interface TripSettingsModalProps {
   trip: Trip;
@@ -51,9 +52,20 @@ export default function TripSettingsModal({
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Add participant
-  const [newName, setNewName] = useState("");
-  const [addError, setAddError] = useState<string | null>(null);
+  // Add participant — combobox excludes already-on-trip users + emails
+  const excludeUserIds = useMemo(
+    () => new Set(participants.map((p) => p.user_id).filter((id): id is string => !!id)),
+    [participants]
+  );
+  const excludeEmails = useMemo(
+    () =>
+      new Set(
+        participants
+          .map((p) => p.invited_email?.toLowerCase())
+          .filter((e): e is string => !!e)
+      ),
+    [participants]
+  );
 
   // Cross-trip claim follow-up
   const [crossMatches, setCrossMatches] = useState<CrossTripMatch[] | null>(null);
@@ -189,31 +201,38 @@ export default function TripSettingsModal({
     onUpdated();
   }
 
-  async function addParticipant() {
-    const name = newName.trim();
-    if (!name || !isCreator) return;
-    setAddError(null);
-    const { error } = await supabase.from("participants").insert({
-      trip_id: trip.id,
-      user_id: null,
-      name,
-      role: "invited",
-      color: assignColor(participants.length),
-    } as Record<string, unknown>);
-    if (error) {
-      setAddError(error.message);
+  async function pickInvite(action: InviteAction) {
+    if (!isCreator) throw new Error("Only the organizer can add participants.");
+
+    if (action.kind === "addUnclaimed") {
+      const { error } = await supabase.from("participants").insert({
+        trip_id: trip.id,
+        user_id: null,
+        name: action.name,
+        role: "invited",
+        color: assignColor(participants.length),
+      } as Record<string, unknown>);
+      if (error) throw new Error(error.message);
+      if (currentUserId) {
+        await logActivity(supabase, {
+          tripId: trip.id,
+          userId: currentUserId,
+          actorName: currentUserName,
+          action: "participant.added",
+          summary: `added ${action.name}`,
+        });
+      }
+      onUpdated();
       return;
     }
-    setNewName("");
-    if (currentUserId) {
-      await logActivity(supabase, {
-        tripId: trip.id,
-        userId: currentUserId,
-        actorName: currentUserName,
-        action: "participant.added",
-        summary: `added ${name}`,
-      });
-    }
+
+    // invitePending — RPC handles idempotency and activity log
+    const { error } = await supabase.rpc("invite_pending_participant", {
+      p_trip_id: trip.id,
+      p_email: action.email,
+      p_name: action.name,
+    });
+    if (error) throw new Error(error.message);
     onUpdated();
   }
 
@@ -344,7 +363,18 @@ export default function TripSettingsModal({
             <ul className="space-y-1.5">
               {participants.map((p) => {
                 const linked = !!p.user_id;
+                const pending = !linked && !!p.invited_email;
                 const isCurrent = p.user_id === currentUserId;
+                const pillCls = linked
+                  ? "bg-green-100 text-green-800"
+                  : pending
+                  ? "bg-blue-100 text-blue-800"
+                  : "bg-amber-100 text-amber-800";
+                const pillText = linked
+                  ? "✓ linked"
+                  : pending
+                  ? "⏳ pending"
+                  : "⊘ unlinked";
                 return (
                   <li
                     key={p.id}
@@ -365,18 +395,22 @@ export default function TripSettingsModal({
                           {p.role}
                         </span>
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                            linked
-                              ? "bg-green-100 text-green-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${pillCls}`}
                         >
-                          {linked ? "✓ linked" : "⊘ unlinked"}
+                          {pillText}
                         </span>
+                        {pending && (
+                          <span
+                            className="text-[10px] text-[var(--ink-3)] truncate"
+                            title={p.invited_email ?? ""}
+                          >
+                            {p.invited_email}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {!linked && currentUserId && (
+                      {!linked && !pending && currentUserId && (
                         <button
                           onClick={() => claim(p)}
                           className="flex items-center gap-1 text-xs bg-[var(--accent)] text-white px-2.5 py-1 rounded-lg hover:opacity-90"
@@ -403,25 +437,11 @@ export default function TripSettingsModal({
 
             {isCreator && (
               <div className="pt-1">
-                <div className="flex items-center gap-2">
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addParticipant()}
-                    placeholder="Add a participant by name…"
-                    className={inputCls}
-                  />
-                  <button
-                    onClick={addParticipant}
-                    disabled={!newName.trim()}
-                    className="flex items-center gap-1 text-sm text-[var(--accent)] disabled:opacity-30 p-1.5"
-                  >
-                    <UserPlus size={14} />
-                  </button>
-                </div>
-                {addError && (
-                  <p className="text-xs text-red-600 mt-1">{addError}</p>
-                )}
+                <UserSearchCombobox
+                  onPick={pickInvite}
+                  excludeUserIds={excludeUserIds}
+                  excludeEmails={excludeEmails}
+                />
               </div>
             )}
           </section>

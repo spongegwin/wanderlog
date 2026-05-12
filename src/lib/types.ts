@@ -31,6 +31,7 @@ export interface Participant {
   role: ParticipantRole;
   color: string | null;
   joined_at: string;
+  invited_email: string | null;
 }
 
 export interface ItineraryBlock {
