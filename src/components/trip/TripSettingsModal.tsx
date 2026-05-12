@@ -53,6 +53,7 @@ export default function TripSettingsModal({
 
   // Add participant
   const [newName, setNewName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Cross-trip claim follow-up
   const [crossMatches, setCrossMatches] = useState<CrossTripMatch[] | null>(null);
@@ -191,13 +192,18 @@ export default function TripSettingsModal({
   async function addParticipant() {
     const name = newName.trim();
     if (!name || !isCreator) return;
-    await supabase.from("participants").insert({
+    setAddError(null);
+    const { error } = await supabase.from("participants").insert({
       trip_id: trip.id,
       user_id: null,
       name,
       role: "invited",
       color: assignColor(participants.length),
     } as Record<string, unknown>);
+    if (error) {
+      setAddError(error.message);
+      return;
+    }
     setNewName("");
     if (currentUserId) {
       await logActivity(supabase, {
@@ -396,21 +402,26 @@ export default function TripSettingsModal({
             </ul>
 
             {isCreator && (
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addParticipant()}
-                  placeholder="Add a participant by name…"
-                  className={inputCls}
-                />
-                <button
-                  onClick={addParticipant}
-                  disabled={!newName.trim()}
-                  className="flex items-center gap-1 text-sm text-[var(--accent)] disabled:opacity-30 p-1.5"
-                >
-                  <UserPlus size={14} />
-                </button>
+              <div className="pt-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addParticipant()}
+                    placeholder="Add a participant by name…"
+                    className={inputCls}
+                  />
+                  <button
+                    onClick={addParticipant}
+                    disabled={!newName.trim()}
+                    className="flex items-center gap-1 text-sm text-[var(--accent)] disabled:opacity-30 p-1.5"
+                  >
+                    <UserPlus size={14} />
+                  </button>
+                </div>
+                {addError && (
+                  <p className="text-xs text-red-600 mt-1">{addError}</p>
+                )}
               </div>
             )}
           </section>
