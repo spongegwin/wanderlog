@@ -17,8 +17,25 @@ import PackingList from "@/components/trip/PackingList";
 import PlanAssistant from "@/components/itinerary/PlanAssistant";
 import BlockBulkEditor from "@/components/itinerary/BlockBulkEditor";
 import { logActivity } from "@/lib/activity";
-import type { BlockDiff } from "@/lib/block-text";
-import { Plus, Sparkles } from "lucide-react";
+import { shortDayLabel, type BlockDiff } from "@/lib/block-text";
+import {
+  DndContext,
+  closestCorners,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, Sparkles, GripVertical } from "lucide-react";
 
 type Tab = "plan" | "today" | "table" | "packing" | "readiness";
 type StatusFilter = "all" | BlockStatus;
@@ -54,8 +71,10 @@ export default function TripDetailPage() {
     label: string;
     blocks: ItineraryBlock[];
   } | null>(null);
-  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
-  const [dragOverBlockId, setDragOverBlockId] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   async function load() {
     const supabase = createClient();
@@ -188,43 +207,103 @@ export default function TripDetailPage() {
     await load();
   }
 
-  // Reorder blocks within a single day group. Reuses the day's existing
-  // sort_order slots so other days aren't disturbed.
-  async function reorderBlocksWithinDay(
-    dayKey: string | null,
-    fromId: string,
-    toId: string
+  // Move (and reorder) a block. Handles within-day reorder AND cross-day moves
+  // including to/from Unscheduled. The target day is renumbered contiguously
+  // 0..N so display order matches caller intent.
+  async function moveBlock(
+    blockId: string,
+    targetDate: string | null,
+    overItemId: string | null
   ) {
-    if (fromId === toId || !userId) return;
+    if (!userId) return;
     const supabase = createClient();
-    const group = blocks
-      .filter((b) => (b.date ?? null) === dayKey)
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+    const sourceDate = block.date ?? null;
+    const sourceChanged = sourceDate !== targetDate;
+
+    const targetGroup = blocks
+      .filter((b) => b.id !== blockId && (b.date ?? null) === targetDate)
       .sort(
         (a, b) =>
           a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)
       );
-    const fromIdx = group.findIndex((b) => b.id === fromId);
-    const toIdx = group.findIndex((b) => b.id === toId);
-    if (fromIdx === -1 || toIdx === -1) return;
 
-    const reordered = [...group];
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
+    const insertIdx = overItemId
+      ? Math.max(0, targetGroup.findIndex((b) => b.id === overItemId))
+      : targetGroup.length;
 
-    const slots = group.map((b) => b.sort_order);
-    const idToNewOrder = new Map(reordered.map((b, idx) => [b.id, slots[idx]]));
+    const newOrder = [...targetGroup];
+    newOrder.splice(insertIdx, 0, block);
+
+    const idToNewOrder = new Map(newOrder.map((b, idx) => [b.id, idx]));
+    const sourceNewSort = idToNewOrder.get(blockId)!;
+
+    if (!sourceChanged && block.sort_order === sourceNewSort) return;
+
+    const newDayLabel = targetDate ? shortDayLabel(targetDate) : null;
 
     setBlocks((prev) =>
-      prev.map((b) =>
-        idToNewOrder.has(b.id) ? { ...b, sort_order: idToNewOrder.get(b.id)! } : b
-      )
+      prev.map((b) => {
+        if (b.id === blockId) {
+          return {
+            ...b,
+            date: targetDate,
+            day_label: sourceChanged ? newDayLabel : b.day_label,
+            sort_order: sourceNewSort,
+          };
+        }
+        if (idToNewOrder.has(b.id)) {
+          return { ...b, sort_order: idToNewOrder.get(b.id)! };
+        }
+        return b;
+      })
     );
 
+    const sourcePatch: Record<string, unknown> = { sort_order: sourceNewSort };
+    if (sourceChanged) {
+      sourcePatch.date = targetDate;
+      sourcePatch.day_label = newDayLabel;
+    }
+    await supabase.from("itinerary_blocks").update(sourcePatch).eq("id", blockId);
+
     await Promise.all(
-      Array.from(idToNewOrder.entries()).map(([id, sort_order]) =>
-        supabase.from("itinerary_blocks").update({ sort_order }).eq("id", id)
-      )
+      Array.from(idToNewOrder.entries())
+        .filter(([id]) => id !== blockId)
+        .map(([id, sort_order]) =>
+          supabase.from("itinerary_blocks").update({ sort_order }).eq("id", id)
+        )
     );
+
+    if (sourceChanged) {
+      await logActivity(supabase, {
+        tripId: id,
+        userId,
+        actorName: userName,
+        action: "block.moved",
+        targetId: blockId,
+        summary: `moved ${block.title} to ${targetDate ? newDayLabel : "Unscheduled"}`,
+      });
+    }
+  }
+
+  function handleBlockDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    let targetDate: string | null;
+    let overItemId: string | null = null;
+    if (overId.startsWith("day::")) {
+      const raw = overId.slice("day::".length);
+      targetDate = raw === "unscheduled" ? null : raw;
+    } else {
+      const overBlock = blocks.find((b) => b.id === overId);
+      if (!overBlock) return;
+      targetDate = overBlock.date ?? null;
+      overItemId = overId;
+    }
+    moveBlock(activeId, targetDate, overItemId);
   }
 
   useEffect(() => {
@@ -269,6 +348,15 @@ export default function TripDetailPage() {
     }
     dayGroups.get(key)!.blocks.push(b);
   }
+  // Sort each day's blocks by sort_order (then created_at). The blocks state
+  // array isn't reordered after an optimistic move — only sort_order values
+  // change — so we have to apply the ordering at render time.
+  const sortBlocks = (a: ItineraryBlock, b: ItineraryBlock) =>
+    a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at);
+  for (const group of dayGroups.values()) {
+    group.blocks.sort(sortBlocks);
+  }
+  noDayBlocks.sort(sortBlocks);
 
   // Sort: dated groups chronologically, then label-only groups in insertion order
   const days = Array.from(dayGroups.values()).sort((a, b) => {
@@ -399,48 +487,30 @@ export default function TripDetailPage() {
       )}
 
       {tab === "plan" && (
-        <div className="space-y-8">
-          {days.map((group, dayIdx) => (
-            <section key={group.key}>
-              <div className="flex items-baseline gap-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-serif text-2xl font-bold text-[var(--ink)] leading-none">
-                    {dayIdx + 1}
-                  </span>
-                  <p className="text-xs font-semibold text-[var(--ink-3)] uppercase tracking-wider leading-none">
-                    Day
-                  </p>
-                </div>
-                <div className="h-px flex-1 bg-[var(--paper-3)]" />
-                <span className="text-sm text-[var(--ink-3)] font-medium whitespace-nowrap">{group.label}</span>
-                {userId && (
-                  <button
-                    onClick={() =>
-                      setBulkEditTarget({
-                        date: group.date,
-                        label: group.label,
-                        blocks: group.blocks,
-                      })
-                    }
-                    className="text-xs text-[var(--ink-3)] hover:text-[var(--accent)] hover:underline transition whitespace-nowrap"
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-2">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragEnd={handleBlockDragEnd}
+        >
+          <div className="space-y-8">
+            {days.map((group, dayIdx) => (
+              <DayDroppable
+                key={group.key}
+                dayKey={group.date ?? group.key}
+                dayIndex={dayIdx + 1}
+                label={group.label}
+                blockIds={group.blocks.map((b) => b.id)}
+                showEdit={!!userId}
+                onEdit={() =>
+                  setBulkEditTarget({
+                    date: group.date,
+                    label: group.label,
+                    blocks: group.blocks,
+                  })
+                }
+              >
                 {group.blocks.map((b) => (
-                  <DraggableBlockWrapper
-                    key={b.id}
-                    blockId={b.id}
-                    dayKey={group.date}
-                    draggingBlockId={draggingBlockId}
-                    dragOverBlockId={dragOverBlockId}
-                    setDraggingBlockId={setDraggingBlockId}
-                    setDragOverBlockId={setDragOverBlockId}
-                    onReorder={reorderBlocksWithinDay}
-                  >
+                  <SortableBlockRow key={b.id} blockId={b.id}>
                     <ItineraryBlockComponent
                       block={b}
                       participants={participants}
@@ -450,44 +520,28 @@ export default function TripDetailPage() {
                       allDayLabels={allDayLabels}
                       onUpdated={load}
                     />
-                  </DraggableBlockWrapper>
+                  </SortableBlockRow>
                 ))}
-              </div>
-            </section>
-          ))}
+              </DayDroppable>
+            ))}
 
-          {noDayBlocks.length > 0 && (
-            <section>
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-sm font-medium text-[var(--ink-3)]">Unscheduled</span>
-                <div className="h-px flex-1 bg-[var(--paper-3)]" />
-                {userId && (
-                  <button
-                    onClick={() =>
-                      setBulkEditTarget({
-                        date: null,
-                        label: "Unscheduled",
-                        blocks: noDayBlocks,
-                      })
-                    }
-                    className="text-xs text-[var(--ink-3)] hover:text-[var(--accent)] hover:underline transition whitespace-nowrap"
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-              <div className="space-y-2">
+            {(noDayBlocks.length > 0 || blocks.length > 0) && (
+              <DayDroppable
+                dayKey="unscheduled"
+                label="Unscheduled"
+                blockIds={noDayBlocks.map((b) => b.id)}
+                showEdit={!!userId && noDayBlocks.length > 0}
+                onEdit={() =>
+                  setBulkEditTarget({
+                    date: null,
+                    label: "Unscheduled",
+                    blocks: noDayBlocks,
+                  })
+                }
+                isUnscheduled
+              >
                 {noDayBlocks.map((b) => (
-                  <DraggableBlockWrapper
-                    key={b.id}
-                    blockId={b.id}
-                    dayKey={null}
-                    draggingBlockId={draggingBlockId}
-                    dragOverBlockId={dragOverBlockId}
-                    setDraggingBlockId={setDraggingBlockId}
-                    setDragOverBlockId={setDragOverBlockId}
-                    onReorder={reorderBlocksWithinDay}
-                  >
+                  <SortableBlockRow key={b.id} blockId={b.id}>
                     <ItineraryBlockComponent
                       block={b}
                       participants={participants}
@@ -497,11 +551,10 @@ export default function TripDetailPage() {
                       allDayLabels={allDayLabels}
                       onUpdated={load}
                     />
-                  </DraggableBlockWrapper>
+                  </SortableBlockRow>
                 ))}
-              </div>
-            </section>
-          )}
+              </DayDroppable>
+            )}
 
           {noBlocks && !showAdd && (
             <EmptyTripCard onAdd={() => setShowAdd(true)} />
@@ -515,7 +568,8 @@ export default function TripDetailPage() {
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </DndContext>
       )}
 
       {tab === "table" && (
@@ -607,62 +661,115 @@ function EmptyTripCard({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-interface DraggableBlockWrapperProps {
-  blockId: string;
-  dayKey: string | null;
-  draggingBlockId: string | null;
-  dragOverBlockId: string | null;
-  setDraggingBlockId: (id: string | null) => void;
-  setDragOverBlockId: (id: string | null) => void;
-  onReorder: (dayKey: string | null, fromId: string, toId: string) => void;
+interface DayDroppableProps {
+  dayKey: string;
+  dayIndex?: number;
+  label: string;
+  blockIds: string[];
+  showEdit: boolean;
+  onEdit: () => void;
+  isUnscheduled?: boolean;
   children: React.ReactNode;
 }
 
-function DraggableBlockWrapper({
-  blockId,
+function DayDroppable({
   dayKey,
-  draggingBlockId,
-  dragOverBlockId,
-  setDraggingBlockId,
-  setDragOverBlockId,
-  onReorder,
+  dayIndex,
+  label,
+  blockIds,
+  showEdit,
+  onEdit,
+  isUnscheduled,
   children,
-}: DraggableBlockWrapperProps) {
-  const isDragging = draggingBlockId === blockId;
-  const isDragOver =
-    dragOverBlockId === blockId && draggingBlockId && draggingBlockId !== blockId;
+}: DayDroppableProps) {
+  const droppableId = `day::${isUnscheduled ? "unscheduled" : dayKey}`;
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId });
 
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        setDraggingBlockId(blockId);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        if (draggingBlockId && draggingBlockId !== blockId) setDragOverBlockId(blockId);
-      }}
-      onDragLeave={() => {
-        if (dragOverBlockId === blockId) setDragOverBlockId(null);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        if (draggingBlockId && draggingBlockId !== blockId) {
-          onReorder(dayKey, draggingBlockId, blockId);
-        }
-        setDraggingBlockId(null);
-        setDragOverBlockId(null);
-      }}
-      onDragEnd={() => {
-        setDraggingBlockId(null);
-        setDragOverBlockId(null);
-      }}
-      className={`transition ${isDragging ? "opacity-30" : ""} ${
-        isDragOver ? "ring-2 ring-[var(--accent)] ring-offset-2 rounded-xl" : ""
-      }`}
-    >
+    <section>
+      <div className="flex items-baseline gap-3 mb-3">
+        {isUnscheduled ? (
+          <span className="text-sm font-medium text-[var(--ink-3)]">Unscheduled</span>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="font-serif text-2xl font-bold text-[var(--ink)] leading-none">
+                {dayIndex}
+              </span>
+              <p className="text-xs font-semibold text-[var(--ink-3)] uppercase tracking-wider leading-none">
+                Day
+              </p>
+            </div>
+            <div className="h-px flex-1 bg-[var(--paper-3)]" />
+            <span className="text-sm text-[var(--ink-3)] font-medium whitespace-nowrap">
+              {label}
+            </span>
+          </>
+        )}
+        {isUnscheduled && <div className="h-px flex-1 bg-[var(--paper-3)]" />}
+        {showEdit && (
+          <button
+            onClick={onEdit}
+            className="text-xs text-[var(--ink-3)] hover:text-[var(--accent)] hover:underline transition whitespace-nowrap"
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
+        <div
+          ref={setNodeRef}
+          className={`space-y-2 min-h-[16px] rounded-lg ${
+            isOver && blockIds.length === 0
+              ? "bg-[var(--paper-2)] outline outline-1 outline-dashed outline-[var(--paper-3)] p-2"
+              : ""
+          }`}
+        >
+          {blockIds.length === 0 && isUnscheduled && (
+            <p className="text-xs text-[var(--ink-3)] italic px-2 py-1">
+              Drag here to unschedule a block.
+            </p>
+          )}
+          {children}
+        </div>
+      </SortableContext>
+    </section>
+  );
+}
+
+function SortableBlockRow({
+  blockId,
+  children,
+}: {
+  blockId: string;
+  children: React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: blockId });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="relative group">
+      <span
+        {...listeners}
+        className="absolute left-2 top-2 cursor-grab active:cursor-grabbing text-[var(--ink-3)] opacity-0 group-hover:opacity-100 transition select-none touch-none z-10"
+        title="Drag to reorder or move to another day"
+        aria-label="Drag handle"
+      >
+        <GripVertical size={14} />
+      </span>
       {children}
     </div>
   );

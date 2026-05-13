@@ -138,14 +138,23 @@ export function diff(
   const toUpdate: DiffResult["toUpdate"] = [];
   const toReorder: DiffResult["toReorder"] = [];
 
-  target.forEach((t, idx) => {
+  // sort_order is per-group so it matches how the display groups items by (scope, category).
+  // A global index would leak the textarea's section ordering into sort_order values that the
+  // display ignores — see PackingList renders categories in a fixed CATEGORIES order.
+  const posByGroup = new Map<string, number>();
+
+  target.forEach((t) => {
     const k = key(t.scope, t.category, t.label);
     if (targetKeys.has(k)) return; // duplicate within target — skip
     targetKeys.add(k);
 
+    const groupKey = `${t.scope}|${t.category}`;
+    const groupIdx = posByGroup.get(groupKey) ?? 0;
+    posByGroup.set(groupKey, groupIdx + 1);
+
     const existing = currentMap.get(k);
     if (!existing) {
-      toInsert.push({ ...t, sort_order: idx });
+      toInsert.push({ ...t, sort_order: groupIdx });
       return;
     }
 
@@ -166,8 +175,8 @@ export function diff(
       });
     }
 
-    if ((existing.sort_order ?? 0) !== idx) {
-      toReorder.push({ id: existing.id, sort_order: idx });
+    if ((existing.sort_order ?? 0) !== groupIdx) {
+      toReorder.push({ id: existing.id, sort_order: groupIdx });
     }
   });
 

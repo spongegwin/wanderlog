@@ -34,7 +34,7 @@ function dateHeader(iso: string): string {
   });
 }
 
-function shortDayLabel(iso: string): string {
+export function shortDayLabel(iso: string): string {
   return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
