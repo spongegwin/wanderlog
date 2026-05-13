@@ -89,6 +89,13 @@ export async function POST(req: NextRequest) {
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 5000,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 3,
+      },
+    ] as never,
     system: `You are a trip-planning assistant for Wingit. The user is in the middle of planning. They will ask a planning question. You have access to the trip's full state (participants, dates, all blocks, packing list summary).
 
 Your job:
@@ -120,6 +127,7 @@ JSON schema:
         "distance_mi": number | null,
         "duration_min": number | null,
         "booking_conf": null,
+        "booking_link": "string or null",
         "cancel_deadline": null
       }
     },
@@ -152,7 +160,14 @@ Rules:
 - For dates: use trip start_date / end_date / existing block dates as anchors; only return null if truly unknowable
 - For waypoints kind: target_block_title must approximately match an existing hike block's title; otherwise propose a new block kind instead
 - Keep suggestions tight: 1-4 items max, ranked most useful first
-- Times should be realistic; include travel buffers for known choke points (airport arrival ≥90min for domestic flights, etc.)`,
+- Times should be realistic; include travel buffers for known choke points (airport arrival ≥90min for domestic flights, etc.)
+
+Location and booking_link (IMPORTANT):
+- For non-transport types (stay, meal, activity): put the venue/address in to_location (e.g. "Hermit Gulch Campground, Avalon, CA"). NEVER put the address in subtitle. Subtitle is for 1-line context only.
+- For transport/flight: from_location and to_location are the route endpoints.
+- For booking-relevant types (transport, stay, meal, activity, flight): use web_search to find the booking/reservation URL when the title names a specific operator/venue/route (e.g. "Catalina Express ferry" → its booking page). Put the URL in booking_link.
+- For generic titles or hike/rest/idea types: leave booking_link as null.
+- NEVER invent URLs. Only include a URL that web_search actually returned.`,
     messages: [
       {
         role: "user",
@@ -161,7 +176,11 @@ Rules:
     ],
   });
 
-  const raw = response.content[0].type === "text" ? response.content[0].text : "";
+  // web_search produces multiple content blocks; find the text block with the JSON
+  const textBlock = response.content.find((c) => c.type === "text") as
+    | { type: "text"; text: string }
+    | undefined;
+  const raw = textBlock?.text ?? "";
 
   // Robust JSON extraction:
   // 1. Strip ```json``` / ``` fences anywhere in the text
