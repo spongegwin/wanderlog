@@ -38,3 +38,11 @@ const PARTICIPANT_COLORS = [
 export function assignColor(index: number): string {
   return PARTICIPANT_COLORS[index % PARTICIPANT_COLORS.length];
 }
+
+// Google Maps universal search URL. Works on desktop browsers, opens the
+// Google Maps app on Android, and on iOS opens Safari (or the Google Maps
+// app if installed). Avoids platform branching while staying tappable.
+export function mapUrl(location: string, contextHint?: string | null): string {
+  const query = contextHint ? `${location}, ${contextHint}` : location;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}

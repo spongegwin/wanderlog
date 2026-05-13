@@ -92,7 +92,17 @@ export default function BlockEditor({
   async function deleteBlock() {
     setSaving(true);
     const supabase = createClient();
-    await supabase.from("itinerary_blocks").delete().eq("id", block.id);
+    const { error, count } = await supabase
+      .from("itinerary_blocks")
+      .delete({ count: "exact" })
+      .eq("id", block.id);
+    setSaving(false);
+
+    if (error || count === 0) {
+      // RLS or FK denied the delete — show feedback instead of pretending.
+      alert(error?.message ?? "Couldn't delete this block. Check that you have permission.");
+      return;
+    }
 
     if (currentUserId) {
       await logActivity(supabase, {
@@ -105,7 +115,6 @@ export default function BlockEditor({
       });
     }
 
-    setSaving(false);
     onDeleted();
     onClose();
   }
@@ -250,29 +259,6 @@ export default function BlockEditor({
               ))}
             </div>
           )}
-
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <Field label="Cost amount">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.cost_amount ?? ""}
-                  onChange={(e) =>
-                    update("cost_amount", e.target.value ? Number(e.target.value) : null)
-                  }
-                  className={inputCls}
-                />
-              </Field>
-            </div>
-            <Field label="Currency">
-              <input
-                value={form.cost_currency}
-                onChange={(e) => update("cost_currency", e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-          </div>
 
           <div className="pt-2 border-t border-[var(--paper-3)] space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">

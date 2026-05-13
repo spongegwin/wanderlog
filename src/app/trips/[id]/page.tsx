@@ -20,7 +20,8 @@ import { logActivity } from "@/lib/activity";
 import { shortDayLabel, type BlockDiff } from "@/lib/block-text";
 import {
   DndContext,
-  closestCorners,
+  closestCenter,
+  MeasuringStrategy,
   PointerSensor,
   KeyboardSensor,
   useSensor,
@@ -33,6 +34,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus, Sparkles, GripVertical } from "lucide-react";
@@ -222,19 +224,36 @@ export default function TripDetailPage() {
     const sourceDate = block.date ?? null;
     const sourceChanged = sourceDate !== targetDate;
 
-    const targetGroup = blocks
-      .filter((b) => b.id !== blockId && (b.date ?? null) === targetDate)
+    // Build the FULL ordered target group (including the dragged item if it
+    // already lives in this group). arrayMove needs the dragged item present
+    // to compute the right destination index without the off-by-one that
+    // affects "filter-and-splice" approaches when dragging downward.
+    const fullTargetGroup = blocks
+      .filter((b) => (b.date ?? null) === targetDate)
       .sort(
         (a, b) =>
           a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)
       );
+    const includesActive = fullTargetGroup.some((b) => b.id === blockId);
 
-    const insertIdx = overItemId
-      ? Math.max(0, targetGroup.findIndex((b) => b.id === overItemId))
-      : targetGroup.length;
-
-    const newOrder = [...targetGroup];
-    newOrder.splice(insertIdx, 0, block);
+    let newOrder: ItineraryBlock[];
+    if (includesActive) {
+      // SAME-GROUP REORDER — use arrayMove on the full list.
+      const oldIndex = fullTargetGroup.findIndex((b) => b.id === blockId);
+      const newIndex = overItemId
+        ? fullTargetGroup.findIndex((b) => b.id === overItemId)
+        : fullTargetGroup.length - 1;
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      newOrder = arrayMove(fullTargetGroup, oldIndex, newIndex);
+    } else {
+      // CROSS-GROUP MOVE — splice in. No off-by-one because the dragged item
+      // isn't in the target group's findIndex calculation.
+      const insertIdx = overItemId
+        ? Math.max(0, fullTargetGroup.findIndex((b) => b.id === overItemId))
+        : fullTargetGroup.length;
+      newOrder = [...fullTargetGroup];
+      newOrder.splice(insertIdx, 0, block);
+    }
 
     const idToNewOrder = new Map(newOrder.map((b, idx) => [b.id, idx]));
     const sourceNewSort = idToNewOrder.get(blockId)!;
@@ -448,6 +467,7 @@ export default function TripDetailPage() {
         )}
       </div>
 
+
       {/* Status filter chips (Plan + Table only) */}
       {(tab === "plan" || tab === "table") && !noBlocks && (
         <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
@@ -489,7 +509,8 @@ export default function TripDetailPage() {
       {tab === "plan" && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={closestCenter}
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
           onDragEnd={handleBlockDragEnd}
         >
           <div className="space-y-8">

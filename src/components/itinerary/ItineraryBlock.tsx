@@ -5,10 +5,11 @@ import type { ItineraryBlock, Participant } from "@/lib/types";
 import HikeBlock from "./HikeBlock";
 import StatusBadge from "@/components/ui/StatusBadge";
 import BlockThread from "./BlockThread";
-import BlockBookings from "./BlockBookings";
 import BlockEditor from "./BlockEditor";
-import BlockVotes from "./BlockVotes";
-import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import BlockMeta from "./BlockMeta";
+import BlockHeart from "./BlockHeart";
+import MapLink from "@/components/ui/MapLink";
+import { ChevronDown, ChevronUp, Pencil, ExternalLink } from "lucide-react";
 
 interface ItineraryBlockProps {
   block: ItineraryBlock;
@@ -88,7 +89,7 @@ export default function ItineraryBlockComponent({
       <div
         role="button"
         tabIndex={0}
-        className="w-full text-left p-4 cursor-pointer select-none"
+        className="w-full text-left p-4 cursor-pointer select-none group"
         onClick={toggleExpand}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -108,28 +109,36 @@ export default function ItineraryBlockComponent({
             </div>
             {isTransport && (block.from_location || block.to_location) && (
               <p className="text-sm text-[var(--ink-2)] mt-0.5">
-                {block.from_location ?? "?"} → {block.to_location ?? "?"}
+                <MapLink location={block.from_location} fallback="?" />
+                {" → "}
+                <MapLink location={block.to_location} fallback="?" />
               </p>
             )}
             {block.subtitle && (
               <p className="text-sm text-[var(--ink-3)] mt-0.5">{block.subtitle}</p>
             )}
-            <div className="flex flex-wrap gap-3 mt-1 text-xs text-[var(--ink-3)]">
-              {transportSummary.map((s, i) => <span key={i}>{s}</span>)}
-              {block.cost_amount && (
-                <span>
-                  {block.cost_currency} {block.cost_amount.toLocaleString()}
-                </span>
-              )}
-            </div>
-            {block.status === "suggested" && (
-              <div className="mt-2">
-                <BlockVotes blockId={block.id} currentUserId={currentUserId} />
+            {transportSummary.length > 0 && (
+              <div className="flex flex-wrap gap-3 mt-1 text-xs text-[var(--ink-3)]">
+                {transportSummary.map((s, i) => <span key={i}>{s}</span>)}
               </div>
             )}
+            <BlockMeta
+              block={block}
+              participants={participants}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+            />
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <BlockHeart
+              blockId={block.id}
+              blockTitle={block.title}
+              tripId={block.trip_id}
+              participants={participants}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+            />
             {currentUserId && (
               <button
                 onClick={(e) => {
@@ -167,20 +176,18 @@ export default function ItineraryBlockComponent({
               href={block.booking_link}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-[var(--sky)] underline"
+              className="inline-flex items-center gap-1.5 text-sm font-medium bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition"
             >
-              View booking →
+              <ExternalLink size={13} />
+              {block.status === "confirmed" || block.status === "completed"
+                ? "View booking"
+                : "Open booking site"}
             </a>
           )}
           {block.booking_details && (
             <p className="text-sm text-[var(--ink-2)]">{block.booking_details}</p>
           )}
 
-          <BlockBookings
-            blockId={block.id}
-            participants={participants}
-            currentUserId={currentUserId}
-          />
           <BlockThread
             blockId={block.id}
             tripId={block.trip_id}

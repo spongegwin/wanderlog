@@ -8,12 +8,13 @@ import DifficultyBadge from "@/components/ui/DifficultyBadge";
 import ElevationProfile from "@/components/ui/ElevationProfile";
 import WeatherStrip from "@/components/ui/WeatherStrip";
 import BlockThread from "./BlockThread";
-import BlockBookings from "./BlockBookings";
 import WaypointTable from "./WaypointTable";
 import WaypointTableEditor from "./WaypointTableEditor";
 import BlockEditor from "./BlockEditor";
-import BlockVotes from "./BlockVotes";
-import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import BlockMeta from "./BlockMeta";
+import BlockHeart from "./BlockHeart";
+import MapLink from "@/components/ui/MapLink";
+import { ChevronDown, ChevronUp, Pencil, ExternalLink } from "lucide-react";
 
 interface HikeBlockProps {
   block: ItineraryBlock;
@@ -54,6 +55,7 @@ export default function HikeBlock({
     ? (block.hike_waypoints as HikeWaypoint[])
     : null;
 
+
   async function saveWaypoints(updated: HikeWaypoint[]) {
     const supabase = createClient();
     await supabase
@@ -73,7 +75,7 @@ export default function HikeBlock({
       <div
         role="button"
         tabIndex={0}
-        className="w-full text-left p-4 cursor-pointer select-none"
+        className="w-full text-left p-4 cursor-pointer select-none group"
         onClick={toggleExpand}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -95,11 +97,19 @@ export default function HikeBlock({
 
             {!isRest && (block.hike_start || block.hike_end) && (
               <p className="text-sm text-[var(--ink-3)] mt-0.5">
-                {block.hike_start}
-                {block.hike_start_elev && ` (${block.hike_start_elev})`}
+                {block.hike_start && (
+                  <>
+                    <MapLink location={block.hike_start} />
+                    {block.hike_start_elev && ` (${block.hike_start_elev})`}
+                  </>
+                )}
                 {block.hike_start && block.hike_end && " → "}
-                {block.hike_end}
-                {block.hike_end_elev && ` (${block.hike_end_elev})`}
+                {block.hike_end && (
+                  <>
+                    <MapLink location={block.hike_end} />
+                    {block.hike_end_elev && ` (${block.hike_end_elev})`}
+                  </>
+                )}
               </p>
             )}
 
@@ -114,14 +124,23 @@ export default function HikeBlock({
             {isRest && block.subtitle && (
               <p className="text-sm text-[var(--ink-2)] mt-1">{block.subtitle}</p>
             )}
-            {block.status === "suggested" && (
-              <div className="mt-2">
-                <BlockVotes blockId={block.id} currentUserId={currentUserId} />
-              </div>
-            )}
+            <BlockMeta
+              block={block}
+              participants={participants}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+            />
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <BlockHeart
+              blockId={block.id}
+              blockTitle={block.title}
+              tripId={block.trip_id}
+              participants={participants}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+            />
             {currentUserId && (
               <button
                 onClick={(e) => {
@@ -178,11 +197,19 @@ export default function HikeBlock({
                 </p>
               )}
 
-              <BlockBookings
-                blockId={block.id}
-                participants={participants}
-                currentUserId={currentUserId}
-              />
+              {block.booking_link && (
+                <a
+                  href={block.booking_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition"
+                >
+                  <ExternalLink size={13} />
+                  {block.status === "confirmed" || block.status === "completed"
+                    ? "View trail page"
+                    : "Open trail page"}
+                </a>
+              )}
 
               <BlockThread
                 blockId={block.id}

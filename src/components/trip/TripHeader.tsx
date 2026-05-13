@@ -60,9 +60,6 @@ export default function TripHeader({
   }
   const totalDistance = blocks.reduce((sum, b) => sum + parseLeadingNumber(b.hike_distance), 0);
   const totalGain = blocks.reduce((sum, b) => sum + parseLeadingNumber(b.hike_elev_gain), 0);
-  const confirmedCost = blocks
-    .filter((b) => b.status === "confirmed" && b.cost_amount)
-    .reduce((sum, b) => sum + (b.cost_amount ?? 0), 0);
   const blockCount = blocks.length;
   const confirmedCount = blocks.filter((b) => b.status === "confirmed").length;
 
@@ -70,7 +67,6 @@ export default function TripHeader({
   if (distinctDays > 0) stats.push(`${distinctDays} ${distinctDays === 1 ? "day" : "days"}`);
   if (totalDistance > 0) stats.push(`${totalDistance.toFixed(1)} mi`);
   if (totalGain > 0) stats.push(`↑ ${totalGain.toLocaleString()} ft`);
-  if (confirmedCost > 0) stats.push(`$${confirmedCost.toLocaleString()} confirmed`);
   if (blockCount > 0) {
     stats.push(`${confirmedCount}/${blockCount} blocks confirmed`);
   }

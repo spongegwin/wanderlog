@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       supabase
         .from("itinerary_blocks")
         .select(
-          "id, type, title, subtitle, status, day_label, date, hike_start, hike_end, hike_distance, hike_elev_gain, hike_est_hours, hike_difficulty, hike_waypoints, transport_mode, from_location, to_location, distance_mi, duration_min, cost_amount, cost_currency, booking_conf, booking_details, cancel_deadline"
+          "id, type, title, subtitle, status, day_label, date, hike_start, hike_end, hike_distance, hike_elev_gain, hike_est_hours, hike_difficulty, hike_waypoints, transport_mode, from_location, to_location, distance_mi, duration_min, booking_conf, booking_details, cancel_deadline"
         )
         .eq("trip_id", tripId)
         .order("date", { ascending: true }),
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         hike_distance: string | null; hike_elev_gain: string | null; hike_est_hours: string | null;
         from_location: string | null; to_location: string | null;
         distance_mi: number | null; duration_min: number | null; transport_mode: string | null;
-        hike_waypoints: unknown; cost_amount: number | null; booking_conf: string | null;
+        hike_waypoints: unknown; booking_conf: string | null;
       };
       const block = b as B;
       const has_waypoints = Array.isArray(block.hike_waypoints) && block.hike_waypoints.length > 0;
@@ -76,7 +76,6 @@ export async function POST(req: NextRequest) {
             ? `${block.transport_mode ?? ""} ${block.distance_mi ?? "?"}mi ${block.duration_min ?? "?"}min`.trim()
             : null,
         booking: block.booking_conf,
-        cost: block.cost_amount,
         has_waypoints,
       };
     }),
@@ -121,8 +120,6 @@ JSON schema:
         "distance_mi": number | null,
         "duration_min": number | null,
         "booking_conf": null,
-        "cost_amount": number | null,
-        "cost_currency": "USD" | null,
         "cancel_deadline": null
       }
     },

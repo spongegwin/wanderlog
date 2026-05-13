@@ -103,7 +103,6 @@ export default function TripTableView({ blocks }: TripTableViewProps) {
               const m = b.duration_min % 60;
               details.push(h > 0 ? `${h}h ${m}m` : `${m}m`);
             }
-            if (b.cost_amount) details.push(`${b.cost_currency} ${b.cost_amount.toLocaleString()}`);
             if (b.booking_conf) details.push(`#${b.booking_conf}`);
 
             return (

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { ItineraryBlock, Participant, BlockBooking } from "@/lib/types";
 import NeedsAction from "./NeedsAction";
-import CostSummary from "./CostSummary";
 
 interface ConfirmedDashboardProps {
   blocks: ItineraryBlock[];
@@ -69,12 +68,6 @@ export default function ConfirmedDashboard({
             <StatCard label="Stays" value={stays.length} icon="🏨" />
             <StatCard label="Activities" value={activities.length} icon="🎯" />
             <StatCard label="Needs booking" value={needsBooking.length} icon="⚠️" accent />
-          </div>
-          <div>
-            <p className="text-xs font-medium text-[var(--ink-3)] uppercase tracking-wide mb-3">
-              Budget
-            </p>
-            <CostSummary blocks={blocks} participants={participants.length} />
           </div>
         </div>
       )}

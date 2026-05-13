@@ -140,11 +140,6 @@ export default function TodayView({ trip, blocks }: TodayViewProps) {
                           {Math.floor(b.duration_min / 60)}h {b.duration_min % 60}m
                         </span>
                       )}
-                      {b.cost_amount && (
-                        <span>
-                          {b.cost_currency} {b.cost_amount.toLocaleString()}
-                        </span>
-                      )}
                       {b.booking_conf && (
                         <span className="font-mono">#{b.booking_conf}</span>
                       )}

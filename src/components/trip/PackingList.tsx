@@ -11,7 +11,8 @@ import PackingItemHistory from "./PackingItemHistory";
 import PackingBulkEditor from "./PackingBulkEditor";
 import {
   DndContext,
-  closestCorners,
+  closestCenter,
+  MeasuringStrategy,
   PointerSensor,
   KeyboardSensor,
   useSensor,
@@ -24,6 +25,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -137,10 +139,12 @@ export default function PackingList({
     const currentCat = normalCat(item.category);
     const sourceChanged = currentScope !== targetScope || currentCat !== targetCategory;
 
-    const targetGroup = items
+    // Build the FULL ordered target group (including the dragged item if it
+    // already lives in this group). arrayMove avoids the off-by-one that
+    // affects filter-and-splice approaches when dragging downward.
+    const fullTargetGroup = items
       .filter(
         (i) =>
-          i.id !== itemId &&
           normalScope(i.scope) === targetScope &&
           normalCat(i.category) === targetCategory
       )
@@ -149,13 +153,27 @@ export default function PackingList({
           (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
           a.created_at.localeCompare(b.created_at)
       );
+    const includesActive = fullTargetGroup.some((i) => i.id === itemId);
 
-    const insertIdx = overItemId
-      ? Math.max(0, targetGroup.findIndex((i) => i.id === overItemId))
-      : targetGroup.length;
-
-    const newOrder = [...targetGroup];
-    newOrder.splice(insertIdx, 0, item);
+    let newOrder: PackingItem[];
+    if (includesActive) {
+      // SAME-GROUP REORDER — use arrayMove on the full list.
+      const oldIndex = fullTargetGroup.findIndex((i) => i.id === itemId);
+      const newIndex = overItemId
+        ? fullTargetGroup.findIndex((i) => i.id === overItemId)
+        : fullTargetGroup.length - 1;
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+        if (!sourceChanged) return;
+      }
+      newOrder = arrayMove(fullTargetGroup, oldIndex, newIndex);
+    } else {
+      // CROSS-GROUP MOVE — splice in.
+      const insertIdx = overItemId
+        ? Math.max(0, fullTargetGroup.findIndex((i) => i.id === overItemId))
+        : fullTargetGroup.length;
+      newOrder = [...fullTargetGroup];
+      newOrder.splice(insertIdx, 0, item);
+    }
 
     const idToNewOrder = new Map(newOrder.map((it, idx) => [it.id, idx]));
     const sourceNewSort = idToNewOrder.get(itemId)!;
@@ -631,7 +649,8 @@ export default function PackingList({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={closestCenter}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         onDragEnd={handleDragEnd}
       >
         {SCOPES.map((scope) => {

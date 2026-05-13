@@ -230,8 +230,6 @@ export type ParsedBlock = {
   date: string | null;
   booking_conf: string | null;
   booking_link: string | null;
-  cost_amount: number | null;
-  cost_currency: string | null;
   cancel_deadline: string | null;
   transport_mode: TransportMode | null;
   from_location: string | null;

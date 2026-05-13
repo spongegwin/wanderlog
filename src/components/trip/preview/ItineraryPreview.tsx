@@ -98,11 +98,6 @@ export default function ItineraryPreview({ blocks }: ItineraryPreviewProps) {
                             .join(" · ")}
                         </p>
                       )}
-                      {b.cost_amount != null && (
-                        <p className="text-xs text-[var(--ink-3)] mt-0.5">
-                          {b.cost_currency ?? "USD"} {b.cost_amount.toLocaleString()}
-                        </p>
-                      )}
                     </div>
                   </li>
                 ))}

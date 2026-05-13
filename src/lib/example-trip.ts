@@ -124,7 +124,6 @@ const itinerary_blocks: ItineraryBlock[] = [
     from_location: "Long Beach",
     to_location: "Avalon",
     duration_min: 60,
-    cost_amount: 78,
   }),
   block({
     id: "example-b-2",
@@ -254,7 +253,6 @@ const itinerary_blocks: ItineraryBlock[] = [
     from_location: "Two Harbors",
     to_location: "San Pedro",
     duration_min: 75,
-    cost_amount: 78,
   }),
 ];
 

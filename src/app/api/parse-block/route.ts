@@ -76,8 +76,6 @@ Schema:
   "date": string | null (ISO YYYY-MM-DD),
   "booking_conf": string | null,
   "booking_link": string | null,
-  "cost_amount": number | null,
-  "cost_currency": string | null,
   "cancel_deadline": string | null (ISO date),
   "transport_mode": "drive" | "ferry" | "flight" | "transit" | "walk" | "other" | null,
   "from_location": string | null,
@@ -94,6 +92,13 @@ Rules:
 - status "confirmed" only if a booking reference or explicit confirmation is mentioned
 - Never hallucinate booking references
 - For transport/flight: extract from_location, to_location, and transport_mode if stated; estimate distance only if obvious
+
+Location fields (IMPORTANT):
+- For stay/meal/activity types: extract the venue or address into to_location (e.g., "Hermit Gulch Campground, Avalon, CA" or "Harbor Reef Restaurant, Two Harbors, CA"). Use web_search to find the city/area when only a venue name is given, so the resulting string is geocodable.
+- If the input includes a street address ("67 Pinetree"), put the entire address — street, city, state if known — into to_location.
+- subtitle is for 1-line context only ("Pre-trail night · walkable from Avalon"; "Buffalo Milk cocktails, fresh fish"). NEVER put addresses or full venue locations in subtitle.
+- For hike/rest/idea types: leave to_location null unless the input explicitly names a destination.
+- from_location only matters for transport/flight (origin of the route).
 
 Booking link (booking_link):
 - For booking-relevant types (transport, stay, meal, activity, flight), if the title names a specific operator/venue/route (e.g., "Catalina Express ferry", "Harbor Reef Restaurant", "United UA123 LAX → JFK"), use web_search to find the booking/reservation URL and put it in booking_link.
