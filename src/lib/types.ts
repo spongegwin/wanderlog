@@ -229,6 +229,7 @@ export type ParsedBlock = {
   day_label: string | null;
   date: string | null;
   booking_conf: string | null;
+  booking_link: string | null;
   cost_amount: number | null;
   cost_currency: string | null;
   cancel_deadline: string | null;
@@ -254,6 +255,7 @@ export type ParsedHike = {
   has_variant: boolean;
   variant_note: string | null;
   notes: string | null;
+  booking_link: string | null;
   confidence: {
     name: Confidence;
     start_point: Confidence;

@@ -339,6 +339,41 @@ export default function PackingList({
           );
         }
       }
+
+      // Resources are bonus — don't block the packing path on these
+      if (Array.isArray(data.resources) && data.resources.length > 0) {
+        const VALID_CATEGORIES = ["trail_map", "guide", "booking", "community", "other"];
+        const resourceRows = data.resources
+          .filter(
+            (r: { url?: unknown }) =>
+              typeof r.url === "string" && (r.url as string).startsWith("http")
+          )
+          .map((r: { title?: string; url: string; description?: string; category?: string }) => ({
+            trip_id: tripId,
+            title: r.title ?? null,
+            url: r.url,
+            description: r.description ?? null,
+            category: VALID_CATEGORIES.includes(r.category ?? "")
+              ? r.category
+              : "other",
+            added_by: currentUserId,
+          }));
+        if (resourceRows.length > 0) {
+          const { data: insertedResources } = await supabase
+            .from("resources")
+            .insert(resourceRows as Record<string, unknown>[])
+            .select();
+          if (insertedResources && currentUserId) {
+            for (const r of insertedResources as { id: string; title: string | null; url: string }[]) {
+              await log(
+                "resource.added",
+                `AI added ${r.title ?? r.url}`,
+                r.id
+              );
+            }
+          }
+        }
+      }
     } finally {
       setSuggesting(false);
     }

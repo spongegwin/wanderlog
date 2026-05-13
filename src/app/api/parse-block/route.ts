@@ -53,7 +53,14 @@ ${datesSummary}`;
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1200,
+    max_tokens: 1500,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 2,
+      },
+    ] as never,
     system: `You are a travel itinerary parser. Given freeform text, extract a structured itinerary block.
 
 Return ONLY valid JSON, no markdown, no explanation.
@@ -68,6 +75,7 @@ Schema:
   "day_label": string | null,
   "date": string | null (ISO YYYY-MM-DD),
   "booking_conf": string | null,
+  "booking_link": string | null,
   "cost_amount": number | null,
   "cost_currency": string | null,
   "cancel_deadline": string | null (ISO date),
@@ -87,6 +95,13 @@ Rules:
 - Never hallucinate booking references
 - For transport/flight: extract from_location, to_location, and transport_mode if stated; estimate distance only if obvious
 
+Booking link (booking_link):
+- For booking-relevant types (transport, stay, meal, activity, flight), if the title names a specific operator/venue/route (e.g., "Catalina Express ferry", "Harbor Reef Restaurant", "United UA123 LAX → JFK"), use web_search to find the booking/reservation URL and put it in booking_link.
+- When the title is generic ("dinner", "hotel near the beach", "morning activity"), leave booking_link as null.
+- For hike, rest, idea types: leave booking_link as null.
+- NEVER invent URLs. Only include a URL that web_search actually returned. If you can't find a confident booking page, leave null.
+- Prefer the direct booking page over the homepage (e.g., the ferry's "Book now" URL, not just catalinaexpress.com).
+
 Date inference (IMPORTANT):
 - Always propose a date when there's any signal — explicit, contextual, or sequential.
 - Explicit cues: a date ("May 19"), weekday + month ("Tue May 19"), or "day N of trip".
@@ -103,7 +118,11 @@ Date inference (IMPORTANT):
     ],
   });
 
-  const raw = response.content[0].type === "text" ? response.content[0].text : "";
+  // web_search produces multiple content blocks; find the text block with the JSON
+  const textBlock = response.content.find((b) => b.type === "text") as
+    | { type: "text"; text: string }
+    | undefined;
+  const raw = textBlock?.text ?? "";
   // Strip markdown code fences if present
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   try {

@@ -50,7 +50,14 @@ ${existing}`;
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1200,
+    max_tokens: 1500,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 2,
+      },
+    ] as never,
     system: `You are a hiking stage data extractor. Parse freeform text and extract structured hiking fields.
 
 Return ONLY valid JSON, no markdown.
@@ -69,6 +76,7 @@ Schema:
   "has_variant": boolean,
   "variant_note": string | null,
   "notes": string | null,
+  "booking_link": string | null,
   "confidence": {
     "name": "found" | "inferred" | "missing",
     "start_point": "found" | "inferred" | "missing",
@@ -90,6 +98,12 @@ Rules:
 - Infer difficulty: <2000ft=easy, 2000-4000ft=moderate, >4000ft=strenuous
 - Infer hours: roughly 2mi/hr + 1hr per 1000ft gain as a baseline
 
+Booking link (booking_link):
+- When the hike is a named, recognizable trail/route (e.g., "Trans-Catalina Trail", "Half Dome", "Mount Whitney"), use web_search to find the official trail or permit page and put the URL in booking_link.
+- Prefer official sources: NPS, USFS, BLM, state/regional parks, conservancies, trail councils. Avoid blogs or AllTrails as the primary link.
+- For unnamed or generic hikes ("morning walk", "ridge hike"), leave booking_link as null.
+- NEVER invent URLs. Only include a URL that web_search actually returned.
+
 Date inference (IMPORTANT):
 - Always propose a date when there's any signal — explicit, contextual, or sequential.
 - Explicit cues: a date ("May 19"), weekday + month ("Tue May 19"), or "day N of trip".
@@ -105,7 +119,11 @@ Date inference (IMPORTANT):
     ],
   });
 
-  const raw = response.content[0].type === "text" ? response.content[0].text : "";
+  // web_search produces multiple content blocks; find the text block with the JSON
+  const textBlock = response.content.find((b) => b.type === "text") as
+    | { type: "text"; text: string }
+    | undefined;
+  const raw = textBlock?.text ?? "";
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   try {
     return NextResponse.json(JSON.parse(cleaned));

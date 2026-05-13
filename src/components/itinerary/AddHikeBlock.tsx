@@ -107,6 +107,7 @@ export default function AddHikeBlock({
       hike_difficulty: data.difficulty ?? null,
       hike_has_variant: data.has_variant ?? false,
       hike_variant_note: data.variant_note ?? null,
+      booking_link: data.booking_link ?? null,
       added_by: currentUserId,
     } as Record<string, unknown>);
     await logActivity(supabase, {
