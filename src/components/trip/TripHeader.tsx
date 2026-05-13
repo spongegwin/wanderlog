@@ -5,7 +5,7 @@ import type { Trip, Participant, ItineraryBlock } from "@/lib/types";
 import Avatar from "@/components/ui/Avatar";
 import { formatDateRange } from "@/lib/utils";
 import TripSettingsModal from "./TripSettingsModal";
-import { Check, Copy, Calendar, Settings } from "lucide-react";
+import { Check, Copy, Calendar, Settings, FileDown } from "lucide-react";
 
 interface TripHeaderProps {
   trip: Trip;
@@ -14,6 +14,7 @@ interface TripHeaderProps {
   currentUserId: string | null;
   currentUserName: string | null;
   onUpdated: () => void;
+  onExport: () => void;
 }
 
 // Parse the leading number from strings like "13.1 mi", "3,400 ft"
@@ -32,6 +33,7 @@ export default function TripHeader({
   currentUserId,
   currentUserName,
   onUpdated,
+  onExport,
 }: TripHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -104,6 +106,14 @@ export default function TripHeader({
             <Calendar size={14} />
             .ics
           </a>
+          <button
+            onClick={onExport}
+            className="flex items-center gap-2 text-sm bg-[var(--paper-2)] hover:bg-[var(--paper-3)] px-3 py-1.5 rounded-full transition-colors"
+            title="Save trip sheet for offline use"
+          >
+            <FileDown size={14} />
+            Export
+          </button>
           {inviteUrl && (
             <button
               onClick={copyInvite}

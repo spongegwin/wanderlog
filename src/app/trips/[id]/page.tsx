@@ -12,8 +12,8 @@ import AddHikeBlock from "@/components/itinerary/AddHikeBlock";
 import ReadinessDashboard from "@/components/trip/ReadinessDashboard";
 import NeedsAction from "@/components/dashboard/NeedsAction";
 import ActivityFeed from "@/components/trip/ActivityFeed";
-import TodayView from "@/components/trip/TodayView";
 import PackingList from "@/components/trip/PackingList";
+import ExportModal from "@/components/trip/ExportModal";
 import PlanAssistant from "@/components/itinerary/PlanAssistant";
 import BlockBulkEditor from "@/components/itinerary/BlockBulkEditor";
 import { logActivity } from "@/lib/activity";
@@ -39,7 +39,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Plus, Sparkles, GripVertical } from "lucide-react";
 
-type Tab = "plan" | "today" | "table" | "packing" | "readiness";
+type Tab = "plan" | "table" | "packing" | "readiness";
 type StatusFilter = "all" | BlockStatus;
 
 const STATUS_FILTERS: StatusFilter[] = ["all", "confirmed", "suggested", "idea"];
@@ -68,6 +68,7 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [bulkEditTarget, setBulkEditTarget] = useState<{
     date: string | null;
     label: string;
@@ -401,6 +402,7 @@ export default function TripDetailPage() {
         currentUserId={userId}
         currentUserName={userName}
         onUpdated={load}
+        onExport={() => setShowExport(true)}
       />
 
       <div className="mt-5 space-y-3">
@@ -419,7 +421,7 @@ export default function TripDetailPage() {
       {/* Tab bar + Add button */}
       <div className="flex items-center justify-between mt-6 mb-4">
         <div className="flex gap-1">
-          {(["plan", "today", "table", "packing", "readiness"] as Tab[]).map((t) => (
+          {(["plan", "table", "packing", "readiness"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -431,8 +433,6 @@ export default function TripDetailPage() {
             >
               {t === "plan"
                 ? "Plan"
-                : t === "today"
-                ? "Today"
                 : t === "table"
                 ? "Table"
                 : t === "packing"
@@ -603,8 +603,6 @@ export default function TripDetailPage() {
         </>
       )}
 
-      {tab === "today" && <TodayView trip={trip} blocks={blocks} />}
-
       {tab === "packing" && (
         <PackingList
           tripId={id}
@@ -622,6 +620,15 @@ export default function TripDetailPage() {
           bookings={bookings}
           currentUserId={userId}
           currentUserName={userName}
+        />
+      )}
+
+      {showExport && (
+        <ExportModal
+          trip={trip}
+          blocks={blocks}
+          participants={participants}
+          onClose={() => setShowExport(false)}
         />
       )}
 
