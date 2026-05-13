@@ -40,14 +40,15 @@ Return ONLY valid JSON array, no markdown:
 
 Categories: Gear, Clothing, Food, Documents, Other.
 Scopes:
-- "shared" — one for the whole group (tent, stove, water filter, first aid kit, bear bag, permits, repair kit, group meals)
+- "shared" — one for the whole group (tent, stove, water filter, first aid kit, permits, repair kit, group meals)
 - "personal" — each person brings their own (headlamp, sleeping bag, clothing, personal documents, water bottle, snacks)
 
 Rules:
 - 15-25 items, prioritized by importance
-- Be specific to the trip type (backpacking → bear bag, water filter; flight trip → passport, charger)
+- Be specific to the trip type (backpacking → water filter, sleeping pad; flight trip → passport, charger)
 - Default to scope "personal" unless the item is naturally one-per-group
-- Skip the obvious (don't include "toothbrush" or "phone")`,
+- Skip the obvious (don't include "toothbrush" or "phone")
+- Wildlife and region-specific gear must match the destination. Only suggest bear storage (bear canister, bear bag, bear spray) for destinations with black or brown bears — most coastal islands, deserts, and developed areas do not. When uncertain about region-specific hazards (wildlife, altitude, weather extremes), omit them rather than guess.`,
     messages: [{ role: "user", content: summary }],
   });
 
